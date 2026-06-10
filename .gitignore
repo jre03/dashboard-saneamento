@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Streamlit
+.streamlit/secrets.toml
+.streamlit/secrets.local.toml
+.streamlit/.streamlitrc
+.streamlit/cache/
+
+# Cache
+*.cache
+.cache/
+.pytest_cache/
+
+# Temporary files
+*.tmp
+*.log
+
+# Sensitive files
+.env
+.env.local
+secrets.json
+config.local.json
+
+# GitHub workflows
+.github/workflows/
+
+# Data files (local only)
+data-local/
+temp/
+*.xlsx~
