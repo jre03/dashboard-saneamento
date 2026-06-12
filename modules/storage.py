@@ -29,9 +29,11 @@ import streamlit as st
 import json
 import hashlib
 import logging
+import ssl
+import certifi
 from typing import List, Tuple, Optional, Dict, Any
 from datetime import datetime
-from github import Github
+from github import Github, Auth
 from github.GithubException import GithubException
 import pandas as pd
 import io
@@ -53,14 +55,15 @@ TIPO_PASTA = {
 
 
 def _get_github_client() -> Optional[Github]:
-    """Retorna cliente GitHub autenticado ou None se token ausente."""
+    """Retorna cliente GitHub autenticado com SSL via certifi."""
     try:
         token = st.secrets.get("GITHUB_TOKEN")
         if not token:
             logger.warning("GITHUB_TOKEN não configurado em st.secrets")
             return None
 
-        return Github(token)
+        auth = Auth.Token(token)
+        return Github(auth=auth, verify=certifi.where())
     except Exception as e:
         logger.error(f"Erro ao criar cliente GitHub: {e}")
         return None
