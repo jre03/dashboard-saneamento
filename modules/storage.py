@@ -25,12 +25,15 @@ Autenticação:
 - Verificação: ADMIN_PASSWORD em st.secrets
 """
 
+import os
+import certifi
+os.environ["SSL_CERT_FILE"]      = certifi.where()
+os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
+
 import streamlit as st
 import json
 import hashlib
 import logging
-import ssl
-import certifi
 from typing import List, Tuple, Optional, Dict, Any
 from datetime import datetime
 from github import Github, Auth
@@ -63,7 +66,7 @@ def _get_github_client() -> Optional[Github]:
             return None
 
         auth = Auth.Token(token)
-        return Github(auth=auth, verify=certifi.where())
+        return Github(auth=auth)
     except Exception as e:
         logger.error(f"Erro ao criar cliente GitHub: {e}")
         return None
