@@ -358,26 +358,25 @@ def _normalizar_ete(df: pd.DataFrame) -> pd.DataFrame:
 
 
 @st.cache_data
-def normalizar_planilha(caminho_arquivo: str, tipo: str) -> pd.DataFrame:
+def normalizar_planilha(entrada: "str | bytes", tipo: str) -> pd.DataFrame:
     """
     Normaliza planilha bruta para estrutura padrão.
 
-    Passos:
-    1. Leitura com header correto (linha 3 para ETAs, linha 2 para Captações/ETEs)
-    2. Forward fill de colunas agrupadas
-    3. Normalização de campos especiais (Evolução, datas)
-    4. Tratamento de typos e erros
-    5. Adição de coluna tipo_projeto
-    6. Padronização de colunas
-
     Args:
-        caminho_arquivo: Caminho do arquivo .xlsx
+        entrada: Caminho do arquivo .xlsx (str) OU bytes do arquivo
         tipo: "ETA" | "Captação" | "ETE"
 
     Returns:
         DataFrame normalizado com colunas padrão
     """
     try:
+        # Converter bytes para BytesIO para pd.read_excel
+        if isinstance(entrada, (bytes, bytearray)):
+            import io as _io
+            fonte = _io.BytesIO(entrada)
+        else:
+            fonte = entrada  # str ou path
+
         # Determinar linha do header
         if tipo == "ETA":
             header_row = 2  # Linha 3 (0-indexed)
@@ -392,7 +391,7 @@ def normalizar_planilha(caminho_arquivo: str, tipo: str) -> pd.DataFrame:
             raise ValueError(f"Tipo desconhecido: {tipo}")
 
         # Ler planilha
-        df = pd.read_excel(caminho_arquivo, sheet_name=sheet_name, header=header_row)
+        df = pd.read_excel(fonte, sheet_name=sheet_name, header=header_row)
 
         logger.info(f"Planilha lida: {tipo}, {len(df)} linhas, {len(df.columns)} colunas")
 

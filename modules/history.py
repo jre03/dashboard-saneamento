@@ -143,6 +143,48 @@ def _gerar_texto_entrada(
         return ""
 
 
+def gerar_resumo_versao(
+    df: "pd.DataFrame",
+    tipo: str,
+    data: Optional[datetime] = None,
+) -> str:
+    """
+    Gera parágrafo-resumo de uma versão única para o feed.
+
+    Exemplo:
+    "ETA — versão de 24/04/2026: 344 atividades | 68% concluídas, 24% pendentes,
+     8% N/A. Municípios: MATRIZ, IBATEGUARA, MARAGOGI..."
+    """
+    try:
+        total = len(df)
+        if total == 0:
+            return f"{tipo}: planilha vazia."
+
+        concluidos = (df["evolucao"] == 1.0).sum()
+        pendentes  = (df["evolucao"] == 0.0).sum()
+        na         = df["evolucao"].isna().sum()
+
+        pct_c = concluidos / total * 100
+        pct_p = pendentes  / total * 100
+        pct_n = na         / total * 100
+
+        data_str = data.strftime("%d/%m/%Y") if data else "—"
+
+        municipios = sorted(df["municipio"].dropna().unique().tolist())
+        mun_resumo = ", ".join(municipios[:5])
+        if len(municipios) > 5:
+            mun_resumo += f" e mais {len(municipios) - 5}"
+
+        return (
+            f"{tipo} — versão de {data_str}: {total} atividades | "
+            f"{pct_c:.0f}% concluídas, {pct_p:.0f}% pendentes, {pct_n:.0f}% N/A. "
+            f"Municípios: {mun_resumo}."
+        )
+    except Exception as e:
+        logger.error(f"Erro ao gerar resumo de versão: {e}")
+        return "Resumo indisponível."
+
+
 def filtrar_historico(
     historico: List[Dict[str, Any]],
     tipo: Optional[str] = None,

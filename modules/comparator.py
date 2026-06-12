@@ -312,10 +312,12 @@ def gerar_entradas_historico(
 
         # Processar alterados
         for item in diff.get("alterados", []):
+            mun = item.get("municipio", "")
             entrada = {
                 "data_upload": datetime.now().isoformat(),
                 "tipo": tipo,
-                "municipio_filtro": item.get("municipio", ""),
+                "municipio_filtro": mun,
+                "municipio": mun,
                 "unidade": item.get("unidade"),
                 "atividade": item.get("atividade", ""),
                 "campo": item["alteracoes"][0].get("campo") if item.get("alteracoes") else "",
@@ -327,10 +329,12 @@ def gerar_entradas_historico(
 
         # Processar adicionados
         for item in diff.get("adicionados", []):
+            mun = item.get("municipio", "")
             entrada = {
                 "data_upload": datetime.now().isoformat(),
                 "tipo": tipo,
-                "municipio_filtro": item.get("municipio", ""),
+                "municipio_filtro": mun,
+                "municipio": mun,
                 "unidade": item.get("unidade"),
                 "atividade": item.get("atividade", ""),
                 "campo": "novo_item",
@@ -342,10 +346,12 @@ def gerar_entradas_historico(
 
         # Processar removidos
         for item in diff.get("removidos", []):
+            mun = item.get("municipio", "")
             entrada = {
                 "data_upload": datetime.now().isoformat(),
                 "tipo": tipo,
-                "municipio_filtro": item.get("municipio", ""),
+                "municipio_filtro": mun,
+                "municipio": mun,
                 "unidade": item.get("unidade"),
                 "atividade": item.get("atividade", ""),
                 "campo": "item_removido",
@@ -361,6 +367,74 @@ def gerar_entradas_historico(
     except Exception as e:
         logger.error(f"Erro ao gerar entradas de histórico: {e}")
         return []
+
+
+def gerar_resumo_comparacao(
+    diff: Dict[str, Any],
+    tipo: str,
+    data_v1: Optional[datetime] = None,
+    data_v2: Optional[datetime] = None,
+) -> str:
+    """
+    Gera parágrafo-resumo textual do diff para o feed.
+
+    Exemplo:
+    "Entre 22/04/2026 e 29/04/2026: 8 atividades avançaram, 3 foram concluídas
+     e 2 tiveram datas atualizadas. Maior avanço em IBATEGUARA."
+    """
+    try:
+        alterados  = diff.get("alterados", [])
+        adicionados = diff.get("adicionados", [])
+        removidos  = diff.get("removidos", [])
+
+        total_alt = len(alterados)
+        total_add = len(adicionados)
+        total_rem = len(removidos)
+
+        if total_alt + total_add + total_rem == 0:
+            return "Nenhuma alteração detectada entre as duas versões."
+
+        # Contar concluídos no diff
+        concluidos = sum(
+            1 for item in alterados
+            for alt in item.get("alteracoes", [])
+            if alt.get("campo") == "evolucao" and alt.get("depois") in ("100%", "1.0", "1")
+        )
+
+        # Municípios com mais alterações
+        from collections import Counter
+        municipios_count = Counter(
+            item.get("municipio", "") for item in alterados
+        )
+        top = municipios_count.most_common(2)
+
+        # Período
+        if data_v1 and data_v2:
+            periodo = f"Entre {data_v1.strftime('%d/%m/%Y')} e {data_v2.strftime('%d/%m/%Y')}: "
+        else:
+            periodo = ""
+
+        partes = []
+        if total_alt > 0:
+            partes.append(f"{total_alt} atividade(s) alterada(s)")
+        if concluidos > 0:
+            partes.append(f"{concluidos} concluída(s)")
+        if total_add > 0:
+            partes.append(f"{total_add} adicionada(s)")
+        if total_rem > 0:
+            partes.append(f"{total_rem} removida(s)")
+
+        resumo = periodo + ", ".join(partes) + "."
+
+        if top:
+            municipios_str = " e ".join(f"{m}" for m, _ in top)
+            resumo += f" Municípios com mais alterações: {municipios_str}."
+
+        return resumo
+
+    except Exception as e:
+        logger.error(f"Erro ao gerar resumo de comparação: {e}")
+        return "Resumo indisponível."
 
 
 def contar_alteracoes(diff: Dict[str, Any]) -> Tuple[int, int, int]:

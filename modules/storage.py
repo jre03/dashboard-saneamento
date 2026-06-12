@@ -27,6 +27,7 @@ Autenticação:
 
 import streamlit as st
 import json
+import hashlib
 import logging
 from typing import List, Tuple, Optional, Dict, Any
 from datetime import datetime
@@ -37,12 +38,11 @@ import io
 
 logger = logging.getLogger(__name__)
 
-# Configuração
-OWNER = "biancade"  # Owner do repositório (será substituído por variável de ambiente)
-REPO = "dashboard-saneamento"  # Nome do repositório
+# Configuração — lida de st.secrets em runtime
 DATA_FOLDER = "data"
 HISTORY_FILE = "history.json"
 METADATA_FILE = "metadata.json"
+CONFIG_FILE = "config.json"
 
 # Mapeamento de tipo para pasta no GitHub
 TIPO_PASTA = {
@@ -67,34 +67,146 @@ def _get_github_client() -> Optional[Github]:
 
 
 def _get_repo(g: Github) -> Optional[Any]:
-    """Obtém repositório GitHub."""
+    """Obtém repositório GitHub a partir de st.secrets."""
     try:
-        return g.get_user(OWNER).get_repo(REPO)
+        owner = st.secrets.get("GITHUB_OWNER", "")
+        repo  = st.secrets.get("GITHUB_REPO", "dashboard-saneamento")
+        if not owner:
+            logger.warning("GITHUB_OWNER não configurado em st.secrets")
+            return None
+        return g.get_user(owner).get_repo(repo)
     except GithubException as e:
-        logger.error(f"Repositório não encontrado: {OWNER}/{REPO} - {e}")
+        logger.error(f"Repositório não encontrado: {e}")
         return None
+
+
+def _sha256(texto: str) -> str:
+    return hashlib.sha256(texto.encode()).hexdigest()
+
+
+def _carregar_config() -> Optional[Dict[str, Any]]:
+    """Lê data/config.json do GitHub. Retorna None se não existir."""
+    try:
+        g = _get_github_client()
+        if not g:
+            return None
+        repo = _get_repo(g)
+        if not repo:
+            return None
+        contents = repo.get_contents(f"{DATA_FOLDER}/{CONFIG_FILE}")
+        return json.loads(contents.decoded_content.decode())
+    except GithubException as e:
+        if e.status == 404:
+            return None
+        logger.error(f"Erro ao carregar config: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Erro ao carregar config: {e}")
+        return None
+
+
+def _salvar_config(config: Dict[str, Any]) -> Tuple[bool, str]:
+    """Grava data/config.json no GitHub via commit."""
+    try:
+        g = _get_github_client()
+        if not g:
+            return False, "Token GitHub ausente"
+        repo = _get_repo(g)
+        if not repo:
+            return False, "Repositório não encontrado"
+
+        conteudo = json.dumps(config, ensure_ascii=False, indent=2)
+        caminho = f"{DATA_FOLDER}/{CONFIG_FILE}"
+
+        try:
+            contents = repo.get_contents(caminho)
+            repo.update_file(
+                path=caminho,
+                message="Atualizar config (senha admin)",
+                content=conteudo,
+                sha=contents.sha,
+                branch="main",
+            )
+        except GithubException as e:
+            if e.status == 404:
+                repo.create_file(
+                    path=caminho,
+                    message="Criar config inicial",
+                    content=conteudo,
+                    branch="main",
+                )
+            else:
+                raise
+
+        return True, "Config salvo"
+    except Exception as e:
+        logger.error(f"Erro ao salvar config: {e}")
+        return False, str(e)
 
 
 def verificar_autenticacao(senha: str) -> bool:
     """
-    Verifica se a senha de admin está correta.
+    Verifica senha de admin com SHA-256.
 
-    Args:
-        senha: Senha fornecida pelo usuário
-
-    Returns:
-        True se válida, False caso contrário
+    Ordem de verificação:
+    1. data/config.json no GitHub (password_hash)
+    2. Fallback: SHA-256(st.secrets["ADMIN_PASSWORD"])
     """
     try:
-        admin_password = st.secrets.get("ADMIN_PASSWORD")
-        if not admin_password:
-            logger.error("ADMIN_PASSWORD não configurado em st.secrets")
-            return False
+        hash_fornecido = _sha256(senha)
 
-        return senha == admin_password
+        config = _carregar_config()
+        if config and "password_hash" in config:
+            return hash_fornecido == config["password_hash"]
+
+        # Fallback: secrets
+        admin_password = st.secrets.get("ADMIN_PASSWORD", "")
+        if not admin_password:
+            logger.error("ADMIN_PASSWORD não configurado")
+            return False
+        return hash_fornecido == _sha256(admin_password)
+
     except Exception as e:
         logger.error(f"Erro ao verificar autenticação: {e}")
         return False
+
+
+def alterar_senha(senha_atual: str, nova_senha: str) -> Tuple[bool, str]:
+    """
+    Valida senha_atual e grava SHA-256(nova_senha) em data/config.json.
+
+    Returns:
+        Tupla (sucesso, mensagem)
+    """
+    if not verificar_autenticacao(senha_atual):
+        return False, "Senha atual incorreta"
+
+    if len(nova_senha) < 6:
+        return False, "Nova senha deve ter pelo menos 6 caracteres"
+
+    config = _carregar_config() or {}
+    config["password_hash"] = _sha256(nova_senha)
+
+    return _salvar_config(config)
+
+
+def carregar_planilha(url: str) -> Optional[bytes]:
+    """
+    Baixa bytes de um arquivo do GitHub pela URL de download.
+
+    Args:
+        url: download_url retornado por listar_versoes()
+
+    Returns:
+        bytes do arquivo ou None em caso de erro
+    """
+    try:
+        import urllib.request
+        with urllib.request.urlopen(url) as resp:
+            return resp.read()
+    except Exception as e:
+        logger.error(f"Erro ao carregar planilha: {e}")
+        return None
 
 
 def listar_versoes(tipo: str) -> List[Tuple[str, Optional[datetime], str]]:
@@ -491,6 +603,21 @@ def inicializar_session_state():
 
     if "timestamp_ultimo_refresh" not in st.session_state:
         st.session_state.timestamp_ultimo_refresh = None
+
+    if "filtros_ativos" not in st.session_state:
+        st.session_state.filtros_ativos = {}
+
+    if "modo_comparacao" not in st.session_state:
+        st.session_state.modo_comparacao = False
+
+    if "versao_a" not in st.session_state:
+        st.session_state.versao_a = None
+
+    if "versao_b" not in st.session_state:
+        st.session_state.versao_b = None
+
+    if "historico_carregado" not in st.session_state:
+        st.session_state.historico_carregado = []
 
     logger.info("Session state inicializado")
 
