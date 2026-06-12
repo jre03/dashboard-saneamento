@@ -74,7 +74,8 @@ def _get_repo(g: Github) -> Optional[Any]:
         if not owner:
             logger.warning("GITHUB_OWNER não configurado em st.secrets")
             return None
-        return g.get_user(owner).get_repo(repo)
+        repo_completo = f"{owner}/{repo}"
+        return g.get_repo(repo_completo)
     except GithubException as e:
         logger.error(f"Repositório não encontrado: {e}")
         return None
